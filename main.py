@@ -1,7 +1,7 @@
+#!/usr/bin/env python
 import os
 import time
 from flask import Flask, abort, request, jsonify, g, url_for
-from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
 from flask_httpauth import HTTPBasicAuth
 import jwt
@@ -9,33 +9,21 @@ from werkzeug.security import generate_password_hash, check_password_hash
 
 # initialization
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'supersecretK3Y'
+app.config['SECRET_KEY'] = 'the quick brown fox jumps over the lazy dog'
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///db.sqlite'
 app.config['SQLALCHEMY_COMMIT_ON_TEARDOWN'] = True
-
-cors = CORS(app, resources={f'*': {
-    "origins": ["*"]}})
 
 # extensions
 db = SQLAlchemy(app)
 auth = HTTPBasicAuth()
 
 
-class Comment(db.Model):
-    __tablename__ = 'comment'
-    id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(90), index=True)
-    text = db.Column(db.TEXT, index=True)
-
-    @staticmethod
-    def get_all_comments():
-        return Comment.query.all()
-
 class User(db.Model):
     __tablename__ = 'users'
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(32), index=True)
     password_hash = db.Column(db.String(128))
+    comments = db.relationship("Comment")
 
     def hash_password(self, password):
         self.password_hash = generate_password_hash(password)
@@ -56,6 +44,17 @@ class User(db.Model):
         except:
             return
         return User.query.get(data['id'])
+
+
+class Comment(db.Model):
+    __tablename__ = 'comments'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'))
+    text = db.Column(db.TEXT)
+
+    @staticmethod
+    def get_all_comments():
+        return Comment.query.all()
 
 
 @auth.verify_password
@@ -95,38 +94,38 @@ def get_user(id):
     return jsonify({'username': user.username})
 
 
+@app.route('/api/get_comments/')
+def get_comments():
+    comments = Comment.get_all_comments()
+    return jsonify({'comments': [
+        {'comment': comment.text, 'user': User.query.get(comment.user_id).username} for comment in comments
+    ], 'status': True})
+
+
+@app.route('/api/post_comment', methods=['POST'])
+@auth.login_required
+def post_comment():
+    comment_text = request.json.get('comment')
+    user = g.user
+    print(user, comment_text)
+    comment = Comment(user_id=user.id, text=comment_text)
+    db.session.add(comment)
+    db.session.commit()
+    return jsonify({'status': True})
+
+
 @app.route('/api/token')
 @auth.login_required
 def get_auth_token():
-    token = g.user.generate_auth_token(600)
-    return jsonify({'token': token.decode('ascii'), 'duration': 600})
+    duration = 86400
+    token = g.user.generate_auth_token(duration)
+    return jsonify({'token': token.decode('ascii'), 'duration': duration})
 
 
 @app.route('/api/resource')
 @auth.login_required
 def get_resource():
     return jsonify({'data': 'Hello, %s!' % g.user.username})
-
-@app.route('/api/post_comment', methods=['POST'])
-@auth.login_required
-def post_comment():
-    comment_text = request.json.get('comment')
-    name = g.user.username
-    comment = Comment(username=name, text=comment_text)
-    db.session.add(comment)
-    db.session.commit()
-    return jsonify({'status': True})
-
-@app.route('/api/get_comments')
-def get_comments():
-    comments = [{'comment': comm.text, 'user': comm.username} for comm in Comment.get_all_comments()]
-    print(comments)
-    return jsonify({'comments': comments})
-
-@app.route('/api/login', methods=['POST'])
-@auth.login_required
-def login_test():
-    return jsonify({'status': True})
 
 
 if __name__ == '__main__':
