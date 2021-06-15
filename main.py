@@ -2,6 +2,7 @@
 import os
 import time
 from flask import Flask, abort, request, jsonify, g, url_for
+from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
 from flask_httpauth import HTTPBasicAuth
 import jwt
@@ -12,6 +13,9 @@ app = Flask(__name__)
 app.config['SECRET_KEY'] = 'the quick brown fox jumps over the lazy dog'
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///db.sqlite'
 app.config['SQLALCHEMY_COMMIT_ON_TEARDOWN'] = True
+
+cors = CORS(app, resources={f'*': {
+    "origins": ["*"]}})
 
 # extensions
 db = SQLAlchemy(app)
